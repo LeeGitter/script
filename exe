@@ -1,9 +1,11 @@
-local plr = game.Players.LocalPlayer
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local uis = game:GetService("UserInputService")
+
+local plr = Players.LocalPlayer
 local char = plr.Character or plr.CharacterAdded:Wait()
 local hum = char:WaitForChild("Humanoid")
 local hrp = char:WaitForChild("HumanoidRootPart")
-local rs = game:GetService("RunService")
-local uis = game:GetService("UserInputService")
 local cam = workspace.CurrentCamera
 
 -- Animation IDs
@@ -13,7 +15,10 @@ local ids = {
     jump   = 4211219390,
     fall   = 656115606,
     spin   = 18537367238,
-    flight = 99694231408564
+    laugh  = 127415121971326,
+    flight = 99694231408564,
+    appear = 90669505009197,
+    mark   = 80372239811417
 }
 
 -- Load animations
@@ -46,11 +51,11 @@ end
 -- Movement settings
 local minWalk = 5
 local maxWalk = 25
-local accel = (maxWalk - minWalk) / 5  -- ~5 seconds to reach max
+local accel = (maxWalk - minWalk) / 5 -- ~5 seconds to max
 hum.WalkSpeed = minWalk
 hum.JumpHeight = 30
 
--- State flags
+-- Airborne state
 local airborne = false
 hum.StateChanged:Connect(function(_, new)
     if new == Enum.HumanoidStateType.Jumping then
@@ -59,6 +64,10 @@ hum.StateChanged:Connect(function(_, new)
         airborne = false
     end
 end)
+
+-- Sprint state (run → sprint after 3s at max)
+local sprinting = false
+local sprintTimer = 0
 
 -- Spin / dash / flight
 local holdingE = false
@@ -73,20 +82,29 @@ local dashSteerHardness = 1
 
 local flightMode = false
 
--- Fling flag
-local flingActive = false
+-- Fling state
+local walkflinging = false
 
--- Your fling logic, wrapped so it only runs during dash
-local function startFling()
-    flingActive = true
+local function startWalkFling()
     local Root = hrp
     local Humanoid = hum
 
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
     Humanoid.BreakJointsOnDeath = false
 
+    RunService.Stepped:Connect(function()
+        if walkflinging then
+            Humanoid.Health = math.huge
+            Humanoid.MaxHealth = math.huge
+        end
+    end)
+
+    walkflinging = true
+    Root.CanCollide = false
+    Humanoid:ChangeState(11)
+
     spawn(function()
-        while flingActive and Root and Root.Parent do
+        while walkflinging and Root and Root.Parent do
             RunService.Heartbeat:Wait()
             local vel = Root.Velocity
             Root.Velocity = vel * 99999999 + Vector3.new(0, 99999999, 0)
@@ -98,57 +116,192 @@ local function startFling()
     end)
 end
 
-local function stopFling()
-    flingActive = false
+local function stopWalkFling()
+    walkflinging = false
 end
 
 local function startDash(charge)
     local alpha = math.clamp(charge / 3, 0, 1)
 
-    dashSpeed = 50 * (1 + 0.5 * alpha)
-    local duration = 3 + 2 * alpha
+    dashSpeed = 50 * (1 + 0.5 * alpha)      -- up to 1.5x
+    local duration = 3 + 2 * alpha          -- 3s → 5s
     dashEndTime = tick() + duration
+    dashSteerHardness = 1 + 0.5 * alpha     -- harder steering at high charge
 
-    dashSteerHardness = 1 + 0.5 * alpha
-
-    local look = cam.CFrame.LookVector
+    cam = workspace.CurrentCamera or cam
+    local look = cam and cam.CFrame.LookVector or hrp.CFrame.LookVector
     local flat = Vector3.new(look.X,0,look.Z)
     if flat.Magnitude < 0.1 then
-        flat = hum.MoveDirection.Magnitude > 0 and hum.MoveDirection or hrp.CFrame.LookVector
-        flat = Vector3.new(flat.X,0,flat.Z)
+        local md = hum.MoveDirection
+        if md.Magnitude > 0.1 then
+            flat = Vector3.new(md.X,0,md.Z)
+        else
+            flat = Vector3.new(hrp.CFrame.LookVector.X,0,hrp.CFrame.LookVector.Z)
+        end
     end
     dashDir = flat.Unit
 
     dashActive = true
-    startFling()
+    startWalkFling()
 end
+
+-- Targeting (R key)
+local mouse = plr:GetMouse()
+local targeting = false
+local targetData = {}
+local hoveredPlayer = nil
+
+local function clearTargets()
+    for p,data in pairs(targetData) do
+        if data.highlight then data.highlight:Destroy() end
+        if data.gui then data.gui:Destroy() end
+    end
+    targetData = {}
+    hoveredPlayer = nil
+end
+
+local function enterTargetMode()
+    targeting = true
+    clearTargets()
+
+    local mark = anims.mark
+    if mark then
+        mark.Looped = true
+        mark:Play()
+    end
+
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p ~= plr and p.Character then
+            local root = p.Character:FindFirstChild("HumanoidRootPart")
+            local head = p.Character:FindFirstChild("Head") or root
+            if root and head then
+                local h = Instance.new("Highlight")
+                h.FillColor = Color3.fromRGB(255,0,0)
+                h.FillTransparency = 0.5
+                h.OutlineColor = Color3.fromRGB(255,215,0)
+                h.Adornee = p.Character
+                h.Parent = p.Character
+
+                local bill = Instance.new("BillboardGui")
+                bill.Size = UDim2.new(0,40,0,40)
+                bill.AlwaysOnTop = true
+                bill.Adornee = head
+                bill.Parent = p.Character
+
+                local frame = Instance.new("Frame")
+                frame.Size = UDim2.new(1,0,1,0)
+                frame.BackgroundColor3 = Color3.fromRGB(255,0,0)
+                frame.BackgroundTransparency = 0.5
+                frame.Parent = bill
+
+                local corner = Instance.new("UICorner")
+                corner.CornerRadius = UDim.new(1,0)
+                corner.Parent = frame
+
+                targetData[p] = {highlight = h, gui = bill, frame = frame}
+            end
+        end
+    end
+end
+
+local function exitTargetMode()
+    targeting = false
+    if anims.mark then anims.mark:Stop() end
+    clearTargets()
+end
+
+mouse.Move:Connect(function()
+    if not targeting then return end
+    hoveredPlayer = nil
+
+    local target = mouse.Target
+    if target then
+        local model = target:FindFirstAncestorOfClass("Model")
+        if model then
+            local p = Players:GetPlayerFromCharacter(model)
+            if p and p ~= plr and targetData[p] then
+                hoveredPlayer = p
+            end
+        end
+    end
+
+    for p,data in pairs(targetData) do
+        if data.frame then
+            if p == hoveredPlayer then
+                data.frame.BackgroundColor3 = Color3.fromRGB(0,255,0)
+            else
+                data.frame.BackgroundColor3 = Color3.fromRGB(255,0,0)
+            end
+        end
+    end
+end)
+
+mouse.Button1Down:Connect(function()
+    if not targeting or not hoveredPlayer then return end
+    local p = hoveredPlayer
+    local ch = p.Character
+    if not ch then return end
+    local root = ch:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    exitTargetMode()
+
+    -- stop mark, play laugh 0.5s, then teleport + appear
+    playAnim("laugh",1)
+    task.delay(0.5, function()
+        stopAll()
+        hrp.CFrame = root.CFrame + Vector3.new(0,3,0)
+        playAnim("appear",1)
+        task.delay(1, function()
+            stopAll()
+        end)
+    end)
+end)
 
 -- Input
 uis.InputBegan:Connect(function(input, gpe)
     if gpe then return end
+
     if input.KeyCode == Enum.KeyCode.E then
         holdingE = true
-
         if not airborne then
+            -- ground spin charge
             spinCharging = true
             chargeStart = tick()
             hum.WalkSpeed = 0
-            playAnim("spin", 3) -- 3x speed
+            playAnim("spin",3) -- 3x speed
         else
+            -- midair flight
             flightMode = true
-            playAnim("flight", 1)
+            playAnim("flight",1)
+        end
+    elseif input.KeyCode == Enum.KeyCode.Q then
+        -- laugh for 1 second
+        playAnim("laugh",1)
+        task.delay(1, function()
+            if currentTrack == anims.laugh then
+                currentTrack:Stop()
+                currentTrack = nil
+            end
+        end)
+    elseif input.KeyCode == Enum.KeyCode.R then
+        if targeting then
+            exitTargetMode()
+        else
+            enterTargetMode()
         end
     end
 end)
 
 uis.InputEnded:Connect(function(input, gpe)
     if gpe then return end
+
     if input.KeyCode == Enum.KeyCode.E then
         holdingE = false
 
         if spinCharging then
             spinCharging = false
-            stopAll()
+            -- keep spin playing during dash; don't stop it here
             local charge = math.min(tick() - chargeStart, 3)
             startDash(charge)
             hum.WalkSpeed = minWalk
@@ -162,68 +315,105 @@ uis.InputEnded:Connect(function(input, gpe)
 end)
 
 -- Main loop
-rs.Heartbeat:Connect(function(dt)
+RunService.Heartbeat:Connect(function(dt)
     cam = workspace.CurrentCamera or cam
     local moving = hum.MoveDirection.Magnitude > 0.1
     local state = hum:GetState()
 
-    -- Flight mode
+    -- Flight mode (midair E hold)
     if flightMode then
-        local dir = cam.CFrame.LookVector
-        hrp.AssemblyLinearVelocity = dir * 35
-        playAnim("flight", 1)
+        if cam then
+            local dir = cam.CFrame.LookVector
+            hrp.AssemblyLinearVelocity = dir * 35
+        end
+        playAnim("flight",1)
         return
     end
 
-    -- Dash mode
+    -- Dash from spin (with fling)
     if dashActive then
         if tick() >= dashEndTime then
             dashActive = false
-            stopFling()
+            stopWalkFling()
+            stopAll()
         else
-            local look = cam.CFrame.LookVector
-            local flat = Vector3.new(look.X,0,look.Z)
-            if flat.Magnitude > 0.1 then flat = flat.Unit end
+            if cam then
+                local look = cam.CFrame.LookVector
+                local flat = Vector3.new(look.X,0,look.Z)
+                if flat.Magnitude > 0.1 then
+                    flat = flat.Unit
+                else
+                    flat = dashDir
+                end
 
-            local moveDir = hum.MoveDirection
-            if moveDir.Magnitude > 0.1 then
-                moveDir = Vector3.new(moveDir.X,0,moveDir.Z).Unit
-                flat = (flat + moveDir).Unit
+                local moveDir = hum.MoveDirection
+                if moveDir.Magnitude > 0.1 then
+                    moveDir = Vector3.new(moveDir.X,0,moveDir.Z).Unit
+                    flat = (flat + moveDir).Unit
+                end
+
+                local steerFactor = 0.15 / dashSteerHardness
+                dashDir = dashDir:Lerp(flat, steerFactor).Unit
             end
-
-            local steerFactor = 0.15 / dashSteerHardness
-            dashDir = dashDir:Lerp(flat, steerFactor).Unit
 
             local vel = hrp.AssemblyLinearVelocity
             hrp.AssemblyLinearVelocity = Vector3.new(dashDir.X * dashSpeed, vel.Y, dashDir.Z * dashSpeed)
+
+            -- keep spin anim going during dash
+            playAnim("spin",3)
         end
         return
     end
 
-    -- Spin charging (no movement)
+    -- Spin charging: no movement
     if spinCharging then
         hum.WalkSpeed = 0
         return
     end
 
-    -- Normal running
-    if moving then
-        hum.WalkSpeed = math.clamp(hum.WalkSpeed + accel * dt, minWalk, maxWalk)
+    -- Sprint / run logic (only when not dash/flight/spin)
+    if not sprinting then
+        if moving then
+            hum.WalkSpeed = math.clamp(hum.WalkSpeed + accel * dt, minWalk, maxWalk)
+            if hum.WalkSpeed >= maxWalk - 0.01 then
+                sprintTimer += dt
+                if sprintTimer >= 3 then
+                    sprinting = true
+                    hum.WalkSpeed = 50
+                end
+            else
+                sprintTimer = 0
+            end
+        else
+            hum.WalkSpeed = minWalk
+            sprintTimer = 0
+        end
     else
-        hum.WalkSpeed = minWalk
+        if not moving then
+            sprinting = false
+            sprintTimer = 0
+            hum.WalkSpeed = minWalk
+            stopAll()
+        else
+            hum.WalkSpeed = 50
+            playAnim("flight",5)
+            return
+        end
     end
 
-    -- Animations
+    -- Animations (base)
     if state == Enum.HumanoidStateType.Jumping then
-        playAnim("jump", 1)
+        playAnim("jump",1)
     elseif state == Enum.HumanoidStateType.Freefall then
-        playAnim("fall", 1)
+        playAnim("fall",1)
     elseif moving then
         playAnim("run")
         local ws = hum.WalkSpeed
         local t = math.clamp((ws - minWalk) / (maxWalk - minWalk), 0, 1)
-        currentTrack:AdjustSpeed(1 + (5 - 1) * t)
+        if currentTrack then
+            currentTrack:AdjustSpeed(1 + (5 - 1) * t)
+        end
     else
-        playAnim("idle", 1)
+        playAnim("idle",1)
     end
 end)
