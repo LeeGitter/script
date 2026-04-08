@@ -18,7 +18,7 @@ local ids = {
     laugh  = 127415121971326,   -- Action4
     flight = 99694231408564,
     appear = 90669505009197,    -- Action4
-    mark   = 80372239811417     -- Action4
+    mark   = 124584711308900     -- Action4
 }
 
 -- Load animations with correct priorities
