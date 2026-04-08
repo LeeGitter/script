@@ -1,0 +1,217 @@
+local plr = game.Players.LocalPlayer
+local char = plr.Character or plr.CharacterAdded:Wait()
+local hum = char:WaitForChild("Humanoid")
+local hrp = char:WaitForChild("HumanoidRootPart")
+local rs = game:GetService("RunService")
+local uis = game:GetService("UserInputService")
+local cam = workspace.CurrentCamera
+
+-- Animation IDs
+local ids = {
+    idle   = 130912259300899,
+    run    = 102622695004986,
+    jump   = 4211219390,
+    fall   = 656115606,
+    spin   = 18537367238,
+    laugh  = 127415121971326,
+    flight = 99694231408564,
+    appear = 90669505009197
+}
+
+-- Load animations
+local anims = {}
+for name, id in pairs(ids) do
+    local a = Instance.new("Animation")
+    a.AnimationId = "rbxassetid://" .. id
+    local track = hum:LoadAnimation(a)
+    track.Priority = Enum.AnimationPriority.Action
+    anims[name] = track
+end
+
+local currentTrack
+local function playAnim(name, speed)
+    local track = anims[name]
+    if not track then return end
+    if currentTrack ~= track then
+        if currentTrack then currentTrack:Stop() end
+        currentTrack = track
+        currentTrack:Play()
+    end
+    if speed then currentTrack:AdjustSpeed(speed) end
+end
+
+local function stopAll()
+    for _, t in pairs(anims) do t:Stop() end
+    currentTrack = nil
+end
+
+-- Movement base
+local minWalk = 5
+local maxWalk = 16
+local accel = 3 -- slower ramp
+hum.WalkSpeed = minWalk
+hum.JumpHeight = 30
+
+-- State flags
+local airborne = false
+hum.StateChanged:Connect(function(_, new)
+    if new == Enum.HumanoidStateType.Jumping then
+        airborne = true
+    elseif new == Enum.HumanoidStateType.Landed then
+        airborne = false
+    end
+end)
+
+-- Spin / dash / flight state
+local holdingE = false
+local spinCharging = false
+local chargeStart = 0
+
+local dashActive = false
+local dashEndTime = 0
+local dashDir = Vector3.new(0, 0, 0)
+local dashSpeed = 50
+local dashSteerHardness = 1
+
+local flightMode = false
+
+local function startDash(charge)
+    local alpha = math.clamp(charge / 3, 0, 1)
+    dashSpeed = 50 * (1 + 0.5 * alpha)          -- up to 1.5x speed
+    local duration = 3 + 2 * alpha              -- 3s → 5s
+    dashEndTime = tick() + duration
+    dashSteerHardness = 1 + 0.5 * alpha         -- harder to steer when higher
+
+    cam = workspace.CurrentCamera
+    local look = cam and cam.CFrame.LookVector or hrp.CFrame.LookVector
+    local flat = Vector3.new(look.X, 0, look.Z)
+    if flat.Magnitude < 0.1 then
+        flat = hum.MoveDirection.Magnitude > 0 and hum.MoveDirection or hrp.CFrame.LookVector
+        flat = Vector3.new(flat.X, 0, flat.Z)
+    end
+    dashDir = flat.Magnitude > 0 and flat.Unit or Vector3.new(0, 0, -1)
+    dashActive = true
+end
+
+-- Input
+uis.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.E then
+        holdingE = true
+        if not airborne then
+            -- Ground spin charge
+            spinCharging = true
+            chargeStart = tick()
+            hum.WalkSpeed = 0
+            playAnim("spin", 1)
+        else
+            -- Air flight mode
+            flightMode = true
+            playAnim("flight", 1)
+        end
+    end
+end)
+
+uis.InputEnded:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.E then
+        holdingE = false
+
+        if spinCharging then
+            spinCharging = false
+            stopAll()
+            local charge = math.min(tick() - chargeStart, 3)
+            startDash(charge)
+            hum.WalkSpeed = minWalk
+        end
+
+        if flightMode then
+            flightMode = false
+            stopAll()
+        end
+    end
+end)
+
+-- Main loop
+rs.Heartbeat:Connect(function(dt)
+    cam = workspace.CurrentCamera or cam
+    local moving = hum.MoveDirection.Magnitude > 0.1
+    local state = hum:GetState()
+
+    -- Flight mode (midair E hold)
+    if flightMode then
+        if cam then
+            local dir = cam.CFrame.LookVector
+            hrp.AssemblyLinearVelocity = dir * 35
+        end
+        playAnim("flight", 1)
+        return
+    end
+
+    -- Dash from spin
+    if dashActive then
+        if tick() >= dashEndTime then
+            dashActive = false
+            hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        else
+            if cam then
+                local look = cam.CFrame.LookVector
+                local flat = Vector3.new(look.X, 0, look.Z)
+                if flat.Magnitude > 0.1 then
+                    flat = flat.Unit
+                else
+                    flat = dashDir
+                end
+
+                local moveDir = hum.MoveDirection
+                if moveDir.Magnitude > 0.1 then
+                    moveDir = Vector3.new(moveDir.X, 0, moveDir.Z).Unit
+                    flat = (flat + moveDir).Unit
+                end
+
+                local steerFactor = 0.15 / dashSteerHardness
+                dashDir = dashDir:Lerp(flat, steerFactor).Unit
+            end
+
+            local vel = hrp.AssemblyLinearVelocity
+            hrp.AssemblyLinearVelocity = Vector3.new(dashDir.X * dashSpeed, vel.Y, dashDir.Z * dashSpeed)
+
+            -- basic fling: high angular velocity while dashing
+            hrp.AssemblyAngularVelocity = Vector3.new(0, 500, 0)
+        end
+    end
+
+    -- While spin charging, no walk/jump control (WalkSpeed already 0)
+    if spinCharging then
+        return
+    end
+
+    -- Base running accel (no dash/flight)
+    if not dashActive then
+        if moving then
+            hum.WalkSpeed = math.clamp(hum.WalkSpeed + accel * dt, minWalk, maxWalk)
+        else
+            hum.WalkSpeed = minWalk
+        end
+    end
+
+    -- Animations (no double jump)
+    if state == Enum.HumanoidStateType.Jumping then
+        playAnim("jump", 1)
+
+    elseif state == Enum.HumanoidStateType.Freefall then
+        playAnim("fall", 1)
+
+    elseif moving and not dashActive then
+        playAnim("run")
+        local ws = hum.WalkSpeed
+        local t = math.clamp((ws - minWalk) / (maxWalk - minWalk), 0, 1)
+        local animSpeed = 1 + (5 - 1) * t
+        currentTrack:AdjustSpeed(animSpeed)
+
+    else
+        if not dashActive then
+            playAnim("idle", 1)
+        end
+    end
+end)
