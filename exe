@@ -15,9 +15,9 @@ local ids = {
     jump   = 4211219390,
     fall   = 656115606,
     spin   = 18537367238,
-    laugh  = 112363822582136,   -- Action4
+    laugh  = 127415121971326,   -- Action4
     flight = 99694231408564,
-    appear = 112363822582136,    -- Action4
+    appear = 127415121971326,    -- Action4
     mark   = 112363822582136     -- Action4
 }
 
