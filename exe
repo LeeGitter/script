@@ -15,19 +15,25 @@ local ids = {
     jump   = 4211219390,
     fall   = 656115606,
     spin   = 18537367238,
-    laugh  = 127415121971326,
+    laugh  = 127415121971326,   -- highest priority
     flight = 99694231408564,
-    appear = 90669505009197,
-    mark   = 80372239811417
+    appear = 90669505009197,    -- highest priority
+    mark   = 80372239811417     -- highest priority
 }
 
--- Load animations (all mid-high priority)
+-- Load animations with correct priorities
 local anims = {}
 for name, id in pairs(ids) do
     local a = Instance.new("Animation")
     a.AnimationId = "rbxassetid://" .. id
     local track = hum:LoadAnimation(a)
-    track.Priority = Enum.AnimationPriority.Action
+
+    if name == "laugh" or name == "appear" or name == "mark" then
+        track.Priority = Enum.AnimationPriority.Action4
+    else
+        track.Priority = Enum.AnimationPriority.Action
+    end
+
     anims[name] = track
 end
 
@@ -44,16 +50,14 @@ local function playAnim(name, speed)
 end
 
 local function stopAll()
-    for _, t in pairs(anims) do
-        t:Stop()
-    end
+    for _, t in pairs(anims) do t:Stop() end
     currentTrack = nil
 end
 
 -- Movement settings
 local minWalk = 5
 local maxWalk = 25
-local accel = (maxWalk - minWalk) / 5 -- ~5 seconds to max
+local accel = (maxWalk - minWalk) / 5
 hum.WalkSpeed = minWalk
 hum.JumpHeight = 30
 
@@ -82,7 +86,7 @@ local dashWalkSpeed = 35
 
 local flightMode = false
 
--- Fling state (no ChangeState, no jump lock)
+-- Fling state
 local walkflinging = false
 
 local function startWalkFling()
@@ -117,18 +121,15 @@ end
 
 local function stopWalkFling()
     walkflinging = false
-    if hrp then
-        hrp.CanCollide = true
-    end
+    if hrp then hrp.CanCollide = true end
 end
 
 local function startDash(charge)
     local alpha = math.clamp(charge / 3, 0, 1)
-    local duration = 3 + 2 * alpha -- 3s → 5s
+    local duration = 3 + 2 * alpha
     dashEndTime = tick() + duration
     dashActive = true
     startWalkFling()
-    -- keep spin playing during dash
     playAnim("spin", 3)
 end
 
@@ -233,7 +234,6 @@ mouse.Button1Down:Connect(function()
 
     exitTargetMode()
 
-    -- laugh 0.5s, then teleport + appear 1s
     playAnim("laugh", 1)
     task.delay(0.5, function()
         stopAll()
@@ -252,19 +252,16 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     if input.KeyCode == Enum.KeyCode.E then
         holdingE = true
         if not airborne then
-            -- ground spin charge
             spinCharging = true
             chargeStart = tick()
             hum.WalkSpeed = 0
             playAnim("spin", 3)
         else
-            -- midair flight
             flightMode = true
             playAnim("flight", 1)
         end
 
     elseif input.KeyCode == Enum.KeyCode.Q then
-        -- laugh for 1 second
         playAnim("laugh", 1)
         task.delay(1, function()
             if currentTrack == anims.laugh then
@@ -274,11 +271,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
         end)
 
     elseif input.KeyCode == Enum.KeyCode.R then
-        if targeting then
-            exitTargetMode()
-        else
-            enterTargetMode()
-        end
+        if targeting then exitTargetMode() else enterTargetMode() end
     end
 end)
 
@@ -292,7 +285,6 @@ UserInputService.InputEnded:Connect(function(input, gpe)
             spinCharging = false
             local charge = math.min(tick() - chargeStart, 3)
             startDash(charge)
-            -- spin stays playing during dash
         end
 
         if flightMode then
@@ -308,7 +300,7 @@ RunService.Heartbeat:Connect(function(dt)
     local moving = hum.MoveDirection.Magnitude > 0.1
     local state = hum:GetState()
 
-    -- Flight mode (midair E hold)
+    -- Flight mode
     if flightMode then
         if cam then
             local dir = cam.CFrame.LookVector
@@ -318,7 +310,7 @@ RunService.Heartbeat:Connect(function(dt)
         return
     end
 
-    -- Dash period: WalkSpeed locked to 35, fling active, spin playing
+    -- Dash mode
     if dashActive then
         if tick() >= dashEndTime then
             dashActive = false
@@ -332,13 +324,13 @@ RunService.Heartbeat:Connect(function(dt)
         return
     end
 
-    -- Spin charging: no movement
+    -- Spin charging
     if spinCharging then
         hum.WalkSpeed = 0
         return
     end
 
-    -- Sprint / run logic (only when not dash/flight/spin)
+    -- Sprint / run logic
     if not sprinting then
         if moving then
             hum.WalkSpeed = math.clamp(hum.WalkSpeed + accel * dt, minWalk, maxWalk)
