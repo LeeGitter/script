@@ -17,9 +17,16 @@ local ids = {
     spin   = 18537367238,
     laugh  = 127415121971326,   -- Action4
     flight = 99694231408564,
-    appear = 127415121971326,    -- Action4
-    mark   = 112363822582136     -- Action4
+    appear = 90669505009197,    -- Action4
+    mark   = 80372239811417     -- Action4
 }
+
+-- Wait for Animator (fixes emotes failing to load)
+local animator = hum:FindFirstChildOfClass("Animator")
+if not animator then
+    hum.ChildAdded:Wait()
+    animator = hum:FindFirstChildOfClass("Animator")
+end
 
 -- Load animations with correct priorities
 local anims = {}
@@ -37,7 +44,7 @@ for name, id in pairs(ids) do
     anims[name] = track
 end
 
--- Force-stop all Action4 animations before playing a new one
+-- Stop all Action4 animations before playing a new one
 local function stopAction4()
     for _, track in pairs(anims) do
         if track.Priority == Enum.AnimationPriority.Action4 then
@@ -51,7 +58,6 @@ local function playAnim(name, speed)
     local t = anims[name]
     if not t then return end
 
-    -- If this is Action4, stop all other Action4 first
     if t.Priority == Enum.AnimationPriority.Action4 then
         stopAction4()
     end
