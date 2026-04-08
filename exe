@@ -15,10 +15,10 @@ local ids = {
     jump   = 4211219390,
     fall   = 656115606,
     spin   = 18537367238,
-    laugh  = 127415121971326,   -- highest priority
+    laugh  = 127415121971326,   -- Action4
     flight = 99694231408564,
-    appear = 90669505009197,    -- highest priority
-    mark   = 80372239811417     -- highest priority
+    appear = 90669505009197,    -- Action4
+    mark   = 80372239811417     -- Action4
 }
 
 -- Load animations with correct priorities
@@ -37,15 +37,31 @@ for name, id in pairs(ids) do
     anims[name] = track
 end
 
+-- Force-stop all Action4 animations before playing a new one
+local function stopAction4()
+    for _, track in pairs(anims) do
+        if track.Priority == Enum.AnimationPriority.Action4 then
+            track:Stop()
+        end
+    end
+end
+
 local currentTrack
 local function playAnim(name, speed)
     local t = anims[name]
     if not t then return end
+
+    -- If this is Action4, stop all other Action4 first
+    if t.Priority == Enum.AnimationPriority.Action4 then
+        stopAction4()
+    end
+
     if currentTrack ~= t then
         if currentTrack then currentTrack:Stop() end
         currentTrack = t
         currentTrack:Play()
     end
+
     if speed then currentTrack:AdjustSpeed(speed) end
 end
 
@@ -152,11 +168,9 @@ local function enterTargetMode()
     targeting = true
     clearTargets()
 
-    local mark = anims.mark
-    if mark then
-        mark.Looped = true
-        mark:Play()
-    end
+    stopAction4()
+    playAnim("mark", 1)
+    anims.mark.Looped = true
 
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= plr and p.Character then
@@ -194,7 +208,7 @@ end
 
 local function exitTargetMode()
     targeting = false
-    if anims.mark then anims.mark:Stop() end
+    stopAction4()
     clearTargets()
 end
 
@@ -234,13 +248,16 @@ mouse.Button1Down:Connect(function()
 
     exitTargetMode()
 
+    stopAction4()
     playAnim("laugh", 1)
+
     task.delay(0.5, function()
-        stopAll()
+        stopAction4()
         hrp.CFrame = root.CFrame + Vector3.new(0, 3, 0)
         playAnim("appear", 1)
+
         task.delay(1, function()
-            stopAll()
+            stopAction4()
         end)
     end)
 end)
@@ -262,6 +279,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
         end
 
     elseif input.KeyCode == Enum.KeyCode.Q then
+        stopAction4()
         playAnim("laugh", 1)
         task.delay(1, function()
             if currentTrack == anims.laugh then
