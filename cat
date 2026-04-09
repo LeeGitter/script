@@ -1,0 +1,197 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local plr = Players.LocalPlayer
+local char = plr.Character or plr.CharacterAdded:Wait()
+local hum = char:WaitForChild("Humanoid")
+local hrp = char:WaitForChild("HumanoidRootPart")
+local cam = workspace.CurrentCamera
+
+---------------------------------------------------------
+-- ANIMATE OVERRIDES
+---------------------------------------------------------
+
+local animate = char:WaitForChild("Animate")
+
+animate.idle.Animation1.AnimationId = "rbxassetid://101538802180310"
+animate.idle.Animation2.AnimationId = "rbxassetid://101538802180310"
+
+animate.walk.WalkAnim.AnimationId = "rbxassetid://120271445804906"
+animate.run.RunAnim.AnimationId  = "rbxassetid://131286411618290"
+
+if animate:FindFirstChild("jump") then
+    animate.jump.JumpAnim.AnimationId = "rbxassetid://82346850919660"
+end
+
+---------------------------------------------------------
+-- MOVEMENT SETTINGS
+---------------------------------------------------------
+
+hum.UseJumpPower = false
+
+local DEFAULT_WALKSPEED = 14
+local SPRINT_SPEED = 50
+
+local DEFAULT_JUMPHEIGHT = hum.JumpHeight
+local CUSTOM_JUMPHEIGHT = 25
+
+hum.WalkSpeed = DEFAULT_WALKSPEED
+
+---------------------------------------------------------
+-- RANDOM EMOTE LIST (P KEY)
+---------------------------------------------------------
+
+local randomList = {
+    108374677470972,
+    129533011423519,
+    105944723518605,
+    133013247646411,
+    84758360646558
+}
+
+local randomTracks = {}
+for _, id in ipairs(randomList) do
+    local a = Instance.new("Animation")
+    a.AnimationId = "rbxassetid://" .. id
+    table.insert(randomTracks, hum:LoadAnimation(a))
+end
+
+local currentRandomTrack = nil
+
+---------------------------------------------------------
+-- F‑KEY EMOTE + WALKFLING (LESS EFFECTIVE)
+---------------------------------------------------------
+
+local fAnim = Instance.new("Animation")
+fAnim.AnimationId = "rbxassetid://133892216995489"
+local fTrack = hum:LoadAnimation(fAnim)
+
+-- ↓↓↓ This is your walkfling, tuned down but same behavior ↓↓↓
+local walkflinging = false
+
+local function startWalkFling()
+    local Root = hrp
+    local Humanoid = hum
+
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+    Humanoid.BreakJointsOnDeath = false
+
+    RunService.Stepped:Connect(function()
+        if walkflinging then
+            Humanoid.Health = math.huge
+            Humanoid.MaxHealth = math.huge
+        end
+    end)
+
+    walkflinging = true
+    Root.CanCollide = false
+
+    task.spawn(function()
+        while walkflinging and Root and Root.Parent do
+            RunService.Heartbeat:Wait()
+            local vel = Root.Velocity
+
+            -- ↓↓↓ LESS EFFECTIVE VERSION ↓↓↓
+            Root.Velocity = vel * 25000 + Vector3.new(0, 25000, 0)
+
+            RunService.RenderStepped:Wait()
+            Root.Velocity = vel
+
+            RunService.Stepped:Wait()
+            Root.Velocity = vel + Vector3.new(0, 0.1, 0)
+        end
+    end)
+end
+
+local function stopWalkFling()
+    walkflinging = false
+    if hrp then hrp.CanCollide = true end
+end
+
+---------------------------------------------------------
+-- INPUT
+---------------------------------------------------------
+
+local sprinting = false
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+
+    -----------------------------------------------------
+    -- SHIFT (Sprint)
+    -----------------------------------------------------
+    if input.KeyCode == Enum.KeyCode.LeftShift then
+        sprinting = true
+        hum.WalkSpeed = SPRINT_SPEED
+    end
+
+    -----------------------------------------------------
+    -- P (Toggle random emote)
+    -----------------------------------------------------
+    if input.KeyCode == Enum.KeyCode.P then
+        if currentRandomTrack and currentRandomTrack.IsPlaying then
+            currentRandomTrack:Stop()
+            currentRandomTrack = nil
+            return
+        end
+
+        local t = randomTracks[math.random(1, #randomTracks)]
+        currentRandomTrack = t
+        t:Play()
+    end
+
+    -----------------------------------------------------
+    -- F (1‑second emote + walkfling)
+    -----------------------------------------------------
+    if input.KeyCode == Enum.KeyCode.F then
+        fTrack:Play()
+        startWalkFling()
+
+        task.delay(1, function()
+            fTrack:Stop()
+            stopWalkFling()
+        end)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gpe)
+    if gpe then return end
+
+    if input.KeyCode == Enum.KeyCode.LeftShift then
+        sprinting = false
+        hum.WalkSpeed = DEFAULT_WALKSPEED
+    end
+end)
+
+---------------------------------------------------------
+-- FORCE JUMP ANIMATION WHILE FALLING
+---------------------------------------------------------
+
+local function forceJumpAnim()
+    if animate:FindFirstChild("jump") then
+        local j = animate.jump.JumpAnim
+        if j then j:Play() end
+    end
+end
+
+hum.StateChanged:Connect(function(_, new)
+    if new == Enum.HumanoidStateType.Jumping then
+        hum.JumpHeight = CUSTOM_JUMPHEIGHT
+    elseif new == Enum.HumanoidStateType.Landed then
+        hum.JumpHeight = DEFAULT_JUMPHEIGHT
+    end
+end)
+
+---------------------------------------------------------
+-- MAIN LOOP
+---------------------------------------------------------
+
+RunService.Heartbeat:Connect(function()
+    local state = hum:GetState()
+
+    if state == Enum.HumanoidStateType.Jumping
+        or state == Enum.HumanoidStateType.Freefall then
+        forceJumpAnim()
+    end
+end)
