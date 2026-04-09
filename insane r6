@@ -1,0 +1,161 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local plr = Players.LocalPlayer
+local char = plr.Character or plr.CharacterAdded:Wait()
+local hum = char:WaitForChild("Humanoid")
+local hrp = char:WaitForChild("HumanoidRootPart")
+local cam = workspace.CurrentCamera
+
+---------------------------------------------------------
+-- ANIMATE OVERRIDES (NORMAL MODE)
+---------------------------------------------------------
+
+local animate = char:WaitForChild("Animate")
+
+animate.idle.Animation1.AnimationId = "rbxassetid://89195173312130"
+animate.idle.Animation2.AnimationId = "rbxassetid://89195173312130"
+
+animate.walk.WalkAnim.AnimationId = "rbxassetid://80536599755423"
+animate.run.RunAnim.AnimationId  = "rbxassetid://80536599755423"
+
+if animate:FindFirstChild("jump") then
+    animate.jump.JumpAnim.AnimationId = "rbxassetid://77139090404184"
+end
+
+if animate:FindFirstChild("fall") then
+    animate.fall.FallAnim.AnimationId = "rbxassetid://139390570947836"
+end
+
+if animate:FindFirstChild("sit") then
+    animate.sit.SitAnim.AnimationId = "rbxassetid://89786372331582"
+end
+
+---------------------------------------------------------
+-- RANDOM EMOTE LIST (P KEY) — TOP PRIORITY
+---------------------------------------------------------
+
+local randomList = {
+    89676212115777,
+    116571017721759,
+    78240649545370
+}
+
+local randomTracks = {}
+for _, id in ipairs(randomList) do
+    local a = Instance.new("Animation")
+    a.AnimationId = "rbxassetid://" .. id
+    local t = hum:LoadAnimation(a)
+    t.Priority = Enum.AnimationPriority.Action4
+    table.insert(randomTracks, t)
+end
+
+local currentRandomTrack = nil
+
+---------------------------------------------------------
+-- INSANE MODE ANIMATIONS
+---------------------------------------------------------
+
+local function applyInsaneAnimations()
+    animate.walk.WalkAnim.AnimationId = "rbxassetid://130072963359721"
+    animate.run.RunAnim.AnimationId  = "rbxassetid://130072963359721"
+
+    if animate:FindFirstChild("jump") then
+        animate.jump.JumpAnim.AnimationId = "rbxassetid://113732978397954"
+    end
+
+    if animate:FindFirstChild("fall") then
+        animate.fall.FallAnim.AnimationId = "rbxassetid://113732978397954"
+    end
+end
+
+---------------------------------------------------------
+-- F‑KEY: INSANE MODE TRIGGER
+---------------------------------------------------------
+
+local insaneAnim = Instance.new("Animation")
+insaneAnim.AnimationId = "rbxassetid://112488881929977"
+local insaneTrack = hum:LoadAnimation(insaneAnim)
+insaneTrack.Priority = Enum.AnimationPriority.Action4
+
+local insaneMode = false
+
+local function enterInsaneMode()
+    insaneMode = true
+
+    hum.WalkSpeed = 32
+    hum.JumpHeight = 15
+
+    applyInsaneAnimations()
+end
+
+---------------------------------------------------------
+-- INPUT
+---------------------------------------------------------
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+
+    -----------------------------------------------------
+    -- P: toggle random emote
+    -----------------------------------------------------
+    if input.KeyCode == Enum.KeyCode.P then
+        if currentRandomTrack and currentRandomTrack.IsPlaying then
+            currentRandomTrack:Stop()
+            currentRandomTrack = nil
+            return
+        end
+
+        local t = randomTracks[math.random(1, #randomTracks)]
+        currentRandomTrack = t
+        t:Play()
+    end
+
+    -----------------------------------------------------
+    -- F: play insane animation (3 sec, no movement)
+    -----------------------------------------------------
+    if input.KeyCode == Enum.KeyCode.F then
+        insaneTrack:Play()
+
+        -- disable movement
+        local oldWalk = hum.WalkSpeed
+        local oldJump = hum.JumpHeight
+
+        hum.WalkSpeed = 0
+        hum.JumpHeight = 0
+
+        task.delay(3, function()
+            insaneTrack:Stop()
+            enterInsaneMode()
+        end)
+    end
+end)
+
+---------------------------------------------------------
+-- FORCE JUMP ANIMATION WHILE FALLING
+---------------------------------------------------------
+
+local function forceJumpAnim()
+    if animate:FindFirstChild("jump") then
+        local j = animate.jump.JumpAnim
+        if j then j:Play() end
+    end
+end
+
+hum.StateChanged:Connect(function(_, new)
+    -- no jump override unless insane mode
+end)
+
+---------------------------------------------------------
+-- MAIN LOOP
+---------------------------------------------------------
+
+RunService.Heartbeat:Connect(function()
+    local state = hum:GetState()
+
+    if state == Enum.HumanoidStateType.Jumping
+        or state == Enum.HumanoidStateType.Freefall then
+        forceJumpAnim()
+    end
+end)
