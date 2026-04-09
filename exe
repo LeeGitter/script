@@ -78,7 +78,7 @@ end
 
 -- Movement settings
 local minWalk = 5
-local maxWalk = 25
+local maxWalk = 35 -- CHANGED
 local accel = (maxWalk - minWalk) / 5
 hum.WalkSpeed = minWalk
 hum.JumpHeight = 30
@@ -93,9 +93,8 @@ hum.StateChanged:Connect(function(_, new)
     end
 end)
 
--- Sprint state
+-- Sprint state (Shift key)
 local sprinting = false
-local sprintTimer = 0
 
 -- Spin / dash / flight
 local holdingE = false
@@ -354,34 +353,24 @@ RunService.Heartbeat:Connect(function(dt)
         return
     end
 
-    -- Sprint / run logic
-    if not sprinting then
-        if moving then
-            hum.WalkSpeed = math.clamp(hum.WalkSpeed + accel * dt, minWalk, maxWalk)
-            if hum.WalkSpeed >= maxWalk - 0.01 then
-                sprintTimer += dt
-                if sprintTimer >= 3 then
-                    sprinting = true
-                    hum.WalkSpeed = 50
-                end
-            else
-                sprintTimer = 0
-            end
-        else
-            hum.WalkSpeed = minWalk
-            sprintTimer = 0
-        end
+    -- SHIFT sprint logic (NEW)
+    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+        sprinting = true
     else
-        if not moving then
-            sprinting = false
-            sprintTimer = 0
-            hum.WalkSpeed = minWalk
-            stopAll()
-        else
-            hum.WalkSpeed = 50
-            playAnim("flight", 5)
-            return
-        end
+        sprinting = false
+    end
+
+    if sprinting then
+        hum.WalkSpeed = 50
+        playAnim("flight", 5)
+        return
+    end
+
+    -- Normal run buildup
+    if moving then
+        hum.WalkSpeed = math.clamp(hum.WalkSpeed + accel * dt, minWalk, maxWalk)
+    else
+        hum.WalkSpeed = minWalk
     end
 
     -- Base animations
