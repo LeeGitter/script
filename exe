@@ -8,47 +8,58 @@ local hum = char:WaitForChild("Humanoid")
 local hrp = char:WaitForChild("HumanoidRootPart")
 local cam = workspace.CurrentCamera
 
--- Animation IDs
-local ids = {
-    idle   = 130912259300899,
-    run    = 102622695004986,
-    jump   = 4211219390,
-    fall   = 656115606,
-    spin   = 18537367238,
-    laugh  = 127415121971326,   -- Action4
-    flight = 99694231408564,
-    appear = 90669505009197,    -- Action4
-    mark   = 80372239811417     -- Action4
-}
+---------------------------------------------------------
+-- ANIMATE‑STYLE MOVEMENT ANIMATION LOADING (NEW SYSTEM)
+---------------------------------------------------------
 
--- Wait for Animator (fixes emotes failing to load)
-local animator = hum:FindFirstChildOfClass("Animator")
-if not animator then
-    hum.ChildAdded:Wait()
-    animator = hum:FindFirstChildOfClass("Animator")
+local animate = char:WaitForChild("Animate")
+
+-- Idle
+animate.idle.Animation1.AnimationId = "rbxassetid://130912259300899"
+animate.idle.Animation2.AnimationId = "rbxassetid://130912259300899"
+
+-- Walk
+animate.walk.WalkAnim.AnimationId = "rbxassetid://102622695004986"
+
+-- Run
+animate.run.RunAnim.AnimationId = "rbxassetid://102622695004986"
+
+-- Jump
+if animate:FindFirstChild("jump") then
+    animate.jump.JumpAnim.AnimationId = "rbxassetid://4211219390"
 end
 
--- Load animations with correct priorities
-local anims = {}
-for name, id in pairs(ids) do
+-- Fall
+if animate:FindFirstChild("fall") then
+    animate.fall.FallAnim.AnimationId = "rbxassetid://656115606"
+end
+
+---------------------------------------------------------
+-- MANUAL ANIMATIONS (Action4 / special)
+---------------------------------------------------------
+
+local animator = hum:WaitForChild("Animator")
+
+local function load(id, priority)
     local a = Instance.new("Animation")
     a.AnimationId = "rbxassetid://" .. id
-    local track = hum:LoadAnimation(a)
-
-    if name == "laugh" or name == "appear" or name == "mark" then
-        track.Priority = Enum.AnimationPriority.Action4
-    else
-        track.Priority = Enum.AnimationPriority.Action
-    end
-
-    anims[name] = track
+    local t = animator:LoadAnimation(a)
+    t.Priority = priority
+    return t
 end
 
--- Stop all Action4 animations before playing a new one
+local anims = {
+    spin   = load(18537367238, Enum.AnimationPriority.Action),
+    laugh  = load(127415121971326, Enum.AnimationPriority.Action4),
+    appear = load(90669505009197, Enum.AnimationPriority.Action4),
+    mark   = load(80372239811417, Enum.AnimationPriority.Action4),
+    flight = load(99694231408564, Enum.AnimationPriority.Action)
+}
+
 local function stopAction4()
-    for _, track in pairs(anims) do
-        if track.Priority == Enum.AnimationPriority.Action4 then
-            track:Stop()
+    for _, t in pairs(anims) do
+        if t.Priority == Enum.AnimationPriority.Action4 then
+            t:Stop()
         end
     end
 end
@@ -65,10 +76,10 @@ local function playAnim(name, speed)
     if currentTrack ~= t then
         if currentTrack then currentTrack:Stop() end
         currentTrack = t
-        currentTrack:Play()
+        t:Play()
     end
 
-    if speed then currentTrack:AdjustSpeed(speed) end
+    if speed then t:AdjustSpeed(speed) end
 end
 
 local function stopAll()
@@ -76,14 +87,16 @@ local function stopAll()
     currentTrack = nil
 end
 
--- Movement settings
+---------------------------------------------------------
+-- MOVEMENT SETTINGS
+---------------------------------------------------------
+
 local minWalk = 5
-local maxWalk = 35 -- CHANGED
+local maxWalk = 35 -- updated
 local accel = (maxWalk - minWalk) / 5
 hum.WalkSpeed = minWalk
 hum.JumpHeight = 30
 
--- Airborne state
 local airborne = false
 hum.StateChanged:Connect(function(_, new)
     if new == Enum.HumanoidStateType.Jumping then
@@ -93,10 +106,16 @@ hum.StateChanged:Connect(function(_, new)
     end
 end)
 
--- Sprint state (Shift key)
+---------------------------------------------------------
+-- SPRINT (SHIFT)
+---------------------------------------------------------
+
 local sprinting = false
 
--- Spin / dash / flight
+---------------------------------------------------------
+-- SPIN / DASH / FLIGHT
+---------------------------------------------------------
+
 local holdingE = false
 local spinCharging = false
 local chargeStart = 0
@@ -107,7 +126,10 @@ local dashWalkSpeed = 35
 
 local flightMode = false
 
--- Fling state
+---------------------------------------------------------
+-- FLING
+---------------------------------------------------------
+
 local walkflinging = false
 
 local function startWalkFling()
@@ -127,7 +149,7 @@ local function startWalkFling()
     walkflinging = true
     Root.CanCollide = false
 
-    spawn(function()
+    task.spawn(function()
         while walkflinging and Root and Root.Parent do
             RunService.Heartbeat:Wait()
             local vel = Root.Velocity
@@ -154,7 +176,10 @@ local function startDash(charge)
     playAnim("spin", 3)
 end
 
--- Targeting (R key)
+---------------------------------------------------------
+-- TARGETING (R)
+---------------------------------------------------------
+
 local mouse = plr:GetMouse()
 local targeting = false
 local targetData = {}
@@ -234,11 +259,9 @@ mouse.Move:Connect(function()
 
     for p, data in pairs(targetData) do
         if data.frame then
-            if p == hoveredPlayer then
-                data.frame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-            else
-                data.frame.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-            end
+            data.frame.BackgroundColor3 = (p == hoveredPlayer)
+                and Color3.fromRGB(0, 255, 0)
+                or  Color3.fromRGB(255, 0, 0)
         end
     end
 end)
@@ -267,7 +290,10 @@ mouse.Button1Down:Connect(function()
     end)
 end)
 
--- Input
+---------------------------------------------------------
+-- INPUT
+---------------------------------------------------------
+
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
 
@@ -286,12 +312,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     elseif input.KeyCode == Enum.KeyCode.Q then
         stopAction4()
         playAnim("laugh", 1)
-        task.delay(1, function()
-            if currentTrack == anims.laugh then
-                currentTrack:Stop()
-                currentTrack = nil
-            end
-        end)
 
     elseif input.KeyCode == Enum.KeyCode.R then
         if targeting then exitTargetMode() else enterTargetMode() end
@@ -317,13 +337,16 @@ UserInputService.InputEnded:Connect(function(input, gpe)
     end
 end)
 
--- Main loop
+---------------------------------------------------------
+-- MAIN LOOP
+---------------------------------------------------------
+
 RunService.Heartbeat:Connect(function(dt)
     cam = workspace.CurrentCamera or cam
     local moving = hum.MoveDirection.Magnitude > 0.1
     local state = hum:GetState()
 
-    -- Flight mode
+    -- Flight
     if flightMode then
         if cam then
             local dir = cam.CFrame.LookVector
@@ -333,7 +356,7 @@ RunService.Heartbeat:Connect(function(dt)
         return
     end
 
-    -- Dash mode
+    -- Dash
     if dashActive then
         if tick() >= dashEndTime then
             dashActive = false
@@ -347,18 +370,14 @@ RunService.Heartbeat:Connect(function(dt)
         return
     end
 
-    -- Spin charging
+    -- Spin charge
     if spinCharging then
         hum.WalkSpeed = 0
         return
     end
 
-    -- SHIFT sprint logic (NEW)
-    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-        sprinting = true
-    else
-        sprinting = false
-    end
+    -- Sprint (Shift)
+    sprinting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
 
     if sprinting then
         hum.WalkSpeed = 50
@@ -373,19 +392,10 @@ RunService.Heartbeat:Connect(function(dt)
         hum.WalkSpeed = minWalk
     end
 
-    -- Base animations
+    -- Base animations (Animate handles movement)
     if state == Enum.HumanoidStateType.Jumping then
-        playAnim("jump", 1)
+        -- Animate handles jump
     elseif state == Enum.HumanoidStateType.Freefall then
-        playAnim("fall", 1)
-    elseif moving then
-        playAnim("run")
-        local ws = hum.WalkSpeed
-        local t = math.clamp((ws - minWalk) / (maxWalk - minWalk), 0, 1)
-        if currentTrack then
-            currentTrack:AdjustSpeed(1 + (5 - 1) * t)
-        end
-    else
-        playAnim("idle", 1)
+        -- Animate handles fall
     end
 end)
