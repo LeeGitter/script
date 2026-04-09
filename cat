@@ -104,7 +104,7 @@ local function startWalkFling()
             Root.Velocity = vel
 
             RunService.Stepped:Wait()
-            Root.Velocity = vel + Vector3.new(0, 0.3, 0)
+            Root.Velocity = vel + Vector3.new(0, 1, 0)
         end
     end)
 end
