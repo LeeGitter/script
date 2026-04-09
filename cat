@@ -47,7 +47,12 @@ local randomList = {
     129533011423519,
     105944723518605,
     133013247646411,
-    84758360646558
+    84758360646558,
+    129991743366120,
+    110518446528422,
+    76231343544375,
+    102998462448180,
+    138706623195970
 }
 
 local randomTracks = {}
@@ -93,13 +98,13 @@ local function startWalkFling()
             local vel = Root.Velocity
 
             -- ↓↓↓ LESS EFFECTIVE VERSION ↓↓↓
-            Root.Velocity = vel * 25000 + Vector3.new(0, 25000, 0)
+            Root.Velocity = vel * 5000 + Vector3.new(0, 5000, 0)
 
             RunService.RenderStepped:Wait()
             Root.Velocity = vel
 
             RunService.Stepped:Wait()
-            Root.Velocity = vel + Vector3.new(0, 0.1, 0)
+            Root.Velocity = vel + Vector3.new(0, 0.01, 0)
         end
     end)
 end
